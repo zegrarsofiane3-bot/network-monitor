@@ -2,7 +2,7 @@
 
 Outil de supervision réseau en Python : il teste en continu la disponibilité de plusieurs machines, enregistre l'historique dans une base SQLite et l'affiche sur un tableau de bord web.
 
-![Tableau de bord](screenshot.png.png)
+![Tableau de bord](dasboard.png)
 
 ## Fonctionnement
 
