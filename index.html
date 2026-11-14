@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Monitor</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1c2230; --muted: #6b7384;
+    --line: #e3e6ec; --ok: #1f9d55; --bad: #d64545; --accent: #2f6fed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c; --card: #1b202b; --text: #e8ebf2; --muted: #8b93a6;
+      --line: #2a3140; --ok: #3ecf7a; --bad: #ff6b6b; --accent: #6b9bff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .head { display: flex; align-items: center; gap: 8px; font-weight: 600; word-break: break-all; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot.up { background: var(--ok); } .dot.down { background: var(--bad); }
+  .state { margin-left: auto; font-size: 12px; font-weight: 600; }
+  .state.up { color: var(--ok); } .state.down { color: var(--bad); }
+  .stats { display: flex; justify-content: space-between; margin: 12px 0 8px; }
+  .stat b { display: block; font-size: 18px; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  svg { width: 100%; height: 44px; display: block; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card);
+          border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  .ok { color: var(--ok); font-weight: 600; } .ko { color: var(--bad); font-weight: 600; }
+  .empty { color: var(--muted); padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Network Monitor</h1>
+  <div class="sub" id="sub">Chargement...</div>
+  <div class="grid" id="cards"></div>
+  <h2>Derniers pings</h2>
+  <table>
+    <thead><tr><th>Heure</th><th>Machine</th><th>État</th><th>Latence</th></tr></thead>
+    <tbody id="recent"></tbody>
+  </table>
+</div>
+
+<script src="data.js"></script>
+<script>
+function spark(history) {
+  var w = 200, h = 44, pad = 4;
+  var vals = history.filter(function (p) { return p.up && p.ms !== null; })
+                    .map(function (p) { return p.ms; });
+  if (history.length < 2 || vals.length === 0) { return ""; }
+  var max = Math.max.apply(null, vals), min = Math.min.apply(null, vals);
+  var span = (max - min) || 1;
+  var step = (w - 2 * pad) / (history.length - 1);
+  var pts = [], dots = "";
+  history.forEach(function (p, i) {
+    var x = pad + i * step;
+    if (p.up && p.ms !== null) {
+      var y = h - pad - ((p.ms - min) / span) * (h - 2 * pad);
+      pts.push(x.toFixed(1) + "," + y.toFixed(1));
+    } else {
+      dots += '<circle cx="' + x.toFixed(1) + '" cy="' + (h - pad) + '" r="3" fill="var(--bad)"/>';
+    }
+  });
+  return '<svg viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none">' +
+         '<polyline fill="none" stroke="var(--accent)" stroke-width="2" points="' + pts.join(" ") + '"/>' +
+         dots + "</svg>";
+}
+
+function fmt(ms) { return ms === null || ms === undefined ? "-" : ms + " ms"; }
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function render() {
+  if (typeof DATA === "undefined") { return; }
+  document.getElementById("sub").textContent =
+    "Mis à jour : " + DATA.generated.replace("T", " ") + " (rafraîchi toutes les 30 s)";
+
+  var cards = document.getElementById("cards");
+  if (DATA.hosts.length === 0) {
+    cards.innerHTML = '<div class="empty">Aucune donnée. Lance monitor.py puis export.py.</div>';
+  } else {
+    cards.innerHTML = DATA.hosts.map(function (d) {
+      var cls = d.up ? "up" : "down";
+      return '<div class="card">' +
+        '<div class="head"><span class="dot ' + cls + '"></span>' + esc(d.host) +
+        '<span class="state ' + cls + '">' + (d.up ? "EN LIGNE" : "HORS LIGNE") + "</span></div>" +
+        '<div class="stats">' +
+        '<div class="stat"><b>' + d.availability + " %</b><span>disponibilité</span></div>" +
+        '<div class="stat"><b>' + fmt(d.avg_ms) + "</b><span>latence moy.</span></div>" +
+        '<div class="stat"><b>' + d.total + "</b><span>pings</span></div>" +
+        "</div>" + spark(d.history) + "</div>";
+    }).join("");
+  }
+
+  document.getElementById("recent").innerHTML = DATA.recent.map(function (r) {
+    return "<tr><td>" + esc(r.ts.replace("T", " ")) + "</td><td>" + esc(r.host) + "</td>" +
+      '<td class="' + (r.up ? "ok" : "ko") + '">' + (r.up ? "UP" : "DOWN") + "</td>" +
+      "<td>" + fmt(r.ms) + "</td></tr>";
+  }).join("");
+}
+
+function reload() {
+  var s = document.createElement("script");
+  s.src = "data.js?t=" + Date.now();
+  s.onload = function () { render(); s.remove(); };
+  document.body.appendChild(s);
+}
+
+render();
+setInterval(reload, 30000);
+</script>
+</body>
+</html>
